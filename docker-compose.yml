@@ -1,0 +1,31 @@
+services:
+  k8s-api:
+    build: .
+    image: k8s-api:latest
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      # Mount your kubeconfig to connect to a remote or local cluster.
+      # When running inside a Kubernetes Pod, in-cluster config is used automatically
+      # and KUBECONFIG is not required.
+      - KUBECONFIG=/root/.kube/config
+    volumes:
+      - "${KUBECONFIG:-${HOME}/.kube/config}:/root/.kube/config:ro"
+    restart: unless-stopped
+    healthcheck:
+      test: ["/k8s-api", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,15 @@
+# PodDisruptionBudget ensures at least one replica stays available
+# during voluntary disruptions (node drain, cluster upgrades).
+# With replicas: 2 this allows one pod to be evicted at a time.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k8s-api
+  namespace: k8s-api
+  labels:
+    app.kubernetes.io/name: k8s-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: k8s-api

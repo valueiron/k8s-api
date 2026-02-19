@@ -1,0 +1,1165 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Kubernetes REST API",
+    "version": "1.0.0",
+    "description": "A simplified REST API for managing Kubernetes resources using client-go. Supports pods, deployments, services, namespaces, configmaps, persistent volume claims, nodes, and cluster info."
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Local development" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Returns 200 OK when the server is running. Used for liveness and readiness probes.",
+        "operationId": "getHealth",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/pods": {
+      "get": {
+        "summary": "List pods",
+        "description": "Returns a summary list of all pods. Optionally filter by namespace.",
+        "operationId": "listPods",
+        "tags": ["Pods"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "description": "Filter by namespace. Omit to list across all namespaces.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pod summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/PodSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pods/{namespace}/{name}": {
+      "get": {
+        "summary": "Inspect a pod",
+        "description": "Returns full Kubernetes Pod object.",
+        "operationId": "getPod",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pod object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PodSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a pod",
+        "description": "Deletes a pod. If managed by a controller the pod will be recreated. Pass ?force=true to set gracePeriodSeconds=0.",
+        "operationId": "deletePod",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "Set to 'true' or '1' to delete with grace period 0.",
+            "schema": { "type": "string", "enum": ["true", "1"] }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Pod deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pods/{namespace}/{name}/logs": {
+      "get": {
+        "summary": "Get pod logs",
+        "description": "Streams the log output of a pod container as plain text.",
+        "operationId": "getPodLogs",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" },
+          {
+            "name": "container",
+            "in": "query",
+            "description": "Container name (required for multi-container pods).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "tail",
+            "in": "query",
+            "description": "Number of lines to return from the end of the log (default 100).",
+            "schema": { "type": "integer", "default": 100 }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only return logs after this RFC3339 timestamp.",
+            "schema": { "type": "string", "format": "date-time" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log output",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pods/{namespace}/{name}/metrics": {
+      "get": {
+        "summary": "Get pod metrics",
+        "description": "Returns CPU (millicores) and memory (MiB) usage for each container. Requires metrics-server to be installed.",
+        "operationId": "getPodMetrics",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pod metrics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PodMetrics" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "$ref": "#/components/responses/MetricsUnavailable" }
+        }
+      }
+    },
+
+    "/pods/{namespace}/{name}/restart": {
+      "post": {
+        "summary": "Restart a pod",
+        "description": "Deletes the pod so its controller (e.g. Deployment) recreates it.",
+        "operationId": "restartPod",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pod deleted, will be recreated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/deployments": {
+      "get": {
+        "summary": "List deployments",
+        "description": "Returns all deployments, optionally filtered by namespace.",
+        "operationId": "listDeployments",
+        "tags": ["Deployments"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "description": "Filter by namespace.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of deployment summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/DeploymentSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Create a deployment",
+        "description": "Creates a Deployment from a simplified request body.",
+        "operationId": "createDeployment",
+        "tags": ["Deployments"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateDeploymentRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Deployment created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeploymentSummary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/deployments/{namespace}/{name}": {
+      "get": {
+        "summary": "Inspect a deployment",
+        "description": "Returns the full Kubernetes Deployment object.",
+        "operationId": "getDeployment",
+        "tags": ["Deployments"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployment object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeploymentSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a deployment",
+        "description": "Removes a deployment and its managed pods.",
+        "operationId": "deleteDeployment",
+        "tags": ["Deployments"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "204": { "description": "Deployment deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/deployments/{namespace}/{name}/scale": {
+      "post": {
+        "summary": "Scale a deployment",
+        "description": "Sets the desired replica count for the deployment.",
+        "operationId": "scaleDeployment",
+        "tags": ["Deployments"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScaleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated scale",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ScaleResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/deployments/{namespace}/{name}/restart": {
+      "post": {
+        "summary": "Rolling restart a deployment",
+        "description": "Triggers a rolling restart by patching the pod template annotation with the current timestamp.",
+        "operationId": "restartDeployment",
+        "tags": ["Deployments"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restart initiated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/services": {
+      "get": {
+        "summary": "List services",
+        "description": "Returns all services, optionally filtered by namespace.",
+        "operationId": "listServices",
+        "tags": ["Services"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of service summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ServiceSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Create a service",
+        "description": "Creates a Kubernetes Service.",
+        "operationId": "createService",
+        "tags": ["Services"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateServiceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Service created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ServiceSummary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/services/{namespace}/{name}": {
+      "get": {
+        "summary": "Inspect a service",
+        "description": "Returns the full Kubernetes Service object.",
+        "operationId": "getService",
+        "tags": ["Services"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ServiceSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a service",
+        "operationId": "deleteService",
+        "tags": ["Services"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "204": { "description": "Service deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/namespaces": {
+      "get": {
+        "summary": "List namespaces",
+        "operationId": "listNamespaces",
+        "tags": ["Namespaces"],
+        "responses": {
+          "200": {
+            "description": "List of namespace summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/NamespaceSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Create a namespace",
+        "operationId": "createNamespace",
+        "tags": ["Namespaces"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateNamespaceRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Namespace created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NamespaceSummary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/namespaces/{name}": {
+      "get": {
+        "summary": "Inspect a namespace",
+        "operationId": "getNamespace",
+        "tags": ["Namespaces"],
+        "parameters": [
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Namespace object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NamespaceSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a namespace",
+        "description": "Deletes a namespace and all resources within it.",
+        "operationId": "deleteNamespace",
+        "tags": ["Namespaces"],
+        "parameters": [
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "204": { "description": "Namespace deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/configmaps": {
+      "get": {
+        "summary": "List configmaps",
+        "operationId": "listConfigMaps",
+        "tags": ["ConfigMaps"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of configmap summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ConfigMapSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Create a configmap",
+        "operationId": "createConfigMap",
+        "tags": ["ConfigMaps"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateConfigMapRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ConfigMap created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConfigMapSummary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/configmaps/{namespace}/{name}": {
+      "get": {
+        "summary": "Inspect a configmap",
+        "description": "Returns the full ConfigMap including all data keys and values.",
+        "operationId": "getConfigMap",
+        "tags": ["ConfigMaps"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "ConfigMap object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConfigMapSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a configmap",
+        "operationId": "deleteConfigMap",
+        "tags": ["ConfigMaps"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "204": { "description": "ConfigMap deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pvcs": {
+      "get": {
+        "summary": "List PersistentVolumeClaims",
+        "operationId": "listPVCs",
+        "tags": ["PersistentVolumeClaims"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of PVC summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/PVCSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Create a PersistentVolumeClaim",
+        "operationId": "createPVC",
+        "tags": ["PersistentVolumeClaims"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePVCRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "PVC created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PVCSummary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pvcs/{namespace}/{name}": {
+      "get": {
+        "summary": "Inspect a PersistentVolumeClaim",
+        "operationId": "getPVC",
+        "tags": ["PersistentVolumeClaims"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "PVC object",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PVCSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a PersistentVolumeClaim",
+        "operationId": "deletePVC",
+        "tags": ["PersistentVolumeClaims"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "204": { "description": "PVC deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/nodes": {
+      "get": {
+        "summary": "List nodes",
+        "description": "Returns all nodes in the cluster with capacity, allocatable resources, and conditions.",
+        "operationId": "listNodes",
+        "tags": ["Nodes"],
+        "responses": {
+          "200": {
+            "description": "List of node summaries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/NodeSummary" }
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/nodes/{name}": {
+      "get": {
+        "summary": "Inspect a node",
+        "operationId": "getNode",
+        "tags": ["Nodes"],
+        "parameters": [
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Node summary",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NodeSummary" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/system/info": {
+      "get": {
+        "summary": "Cluster info",
+        "description": "Returns the Kubernetes server version and aggregate counts of nodes, namespaces, and pods.",
+        "operationId": "getClusterInfo",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Cluster summary",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClusterInfo" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+
+  "components": {
+    "parameters": {
+      "namespace": {
+        "name": "namespace",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Kubernetes namespace"
+      },
+      "name": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Resource name"
+      }
+    },
+
+    "responses": {
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid request body or missing required fields",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Kubernetes API error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "MetricsUnavailable": {
+        "description": "metrics-server is not installed in the cluster",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    },
+
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "pod not found" }
+        }
+      },
+
+      "StatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "rolling restart initiated" }
+        }
+      },
+
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" }
+        }
+      },
+
+      "ContainerStatus": {
+        "type": "object",
+        "properties": {
+          "name":     { "type": "string" },
+          "image":    { "type": "string" },
+          "ready":    { "type": "boolean" },
+          "restarts": { "type": "integer" },
+          "state":    { "type": "string", "example": "running" }
+        }
+      },
+
+      "PodSummary": {
+        "type": "object",
+        "properties": {
+          "name":       { "type": "string" },
+          "namespace":  { "type": "string" },
+          "phase":      { "type": "string", "example": "Running" },
+          "node_name":  { "type": "string" },
+          "pod_ip":     { "type": "string" },
+          "start_time": { "type": "string", "format": "date-time" },
+          "labels":     { "type": "object", "additionalProperties": { "type": "string" } },
+          "containers": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ContainerStatus" }
+          }
+        }
+      },
+
+      "ContainerMetrics": {
+        "type": "object",
+        "properties": {
+          "name":           { "type": "string" },
+          "cpu_millicores": { "type": "integer", "description": "CPU usage in millicores" },
+          "memory_mib":     { "type": "integer", "description": "Memory usage in MiB" }
+        }
+      },
+
+      "PodMetrics": {
+        "type": "object",
+        "properties": {
+          "name":       { "type": "string" },
+          "namespace":  { "type": "string" },
+          "containers": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ContainerMetrics" }
+          }
+        }
+      },
+
+      "DeploymentSummary": {
+        "type": "object",
+        "properties": {
+          "name":               { "type": "string" },
+          "namespace":          { "type": "string" },
+          "replicas":           { "type": "integer" },
+          "ready_replicas":     { "type": "integer" },
+          "available_replicas": { "type": "integer" },
+          "updated_replicas":   { "type": "integer" },
+          "image":              { "type": "string" },
+          "labels":             { "type": "object", "additionalProperties": { "type": "string" } },
+          "created_at":         { "type": "string", "format": "date-time" },
+          "conditions":         { "type": "array", "items": { "type": "string" } }
+        }
+      },
+
+      "EnvVar": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "value": { "type": "string" }
+        },
+        "required": ["name", "value"]
+      },
+
+      "CreateDeploymentRequest": {
+        "type": "object",
+        "required": ["name", "image"],
+        "properties": {
+          "name":      { "type": "string", "example": "nginx" },
+          "namespace": { "type": "string", "default": "default" },
+          "replicas":  { "type": "integer", "default": 1 },
+          "image":     { "type": "string", "example": "nginx:latest" },
+          "port":      { "type": "integer", "example": 80 },
+          "labels":    { "type": "object", "additionalProperties": { "type": "string" } },
+          "env": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/EnvVar" }
+          }
+        }
+      },
+
+      "ScaleRequest": {
+        "type": "object",
+        "required": ["replicas"],
+        "properties": {
+          "replicas": { "type": "integer", "minimum": 0, "example": 3 }
+        }
+      },
+
+      "ScaleResponse": {
+        "type": "object",
+        "properties": {
+          "name":      { "type": "string" },
+          "namespace": { "type": "string" },
+          "replicas":  { "type": "integer" }
+        }
+      },
+
+      "ServicePort": {
+        "type": "object",
+        "properties": {
+          "name":        { "type": "string" },
+          "protocol":    { "type": "string", "example": "TCP" },
+          "port":        { "type": "integer" },
+          "target_port": { "type": "string" },
+          "node_port":   { "type": "integer" }
+        }
+      },
+
+      "ServiceSummary": {
+        "type": "object",
+        "properties": {
+          "name":         { "type": "string" },
+          "namespace":    { "type": "string" },
+          "type":         { "type": "string", "example": "ClusterIP" },
+          "cluster_ip":   { "type": "string" },
+          "external_ips": { "type": "array", "items": { "type": "string" } },
+          "selector":     { "type": "object", "additionalProperties": { "type": "string" } },
+          "labels":       { "type": "object", "additionalProperties": { "type": "string" } },
+          "ports":        { "type": "array", "items": { "$ref": "#/components/schemas/ServicePort" } },
+          "created_at":   { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "ServicePortSpec": {
+        "type": "object",
+        "required": ["port", "target_port"],
+        "properties": {
+          "name":        { "type": "string" },
+          "protocol":    { "type": "string", "enum": ["TCP", "UDP"], "default": "TCP" },
+          "port":        { "type": "integer" },
+          "target_port": { "type": "integer" },
+          "node_port":   { "type": "integer" }
+        }
+      },
+
+      "CreateServiceRequest": {
+        "type": "object",
+        "required": ["name", "ports"],
+        "properties": {
+          "name":      { "type": "string" },
+          "namespace": { "type": "string", "default": "default" },
+          "type":      { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"], "default": "ClusterIP" },
+          "selector":  { "type": "object", "additionalProperties": { "type": "string" } },
+          "labels":    { "type": "object", "additionalProperties": { "type": "string" } },
+          "ports":     { "type": "array", "items": { "$ref": "#/components/schemas/ServicePortSpec" } }
+        }
+      },
+
+      "NamespaceSummary": {
+        "type": "object",
+        "properties": {
+          "name":       { "type": "string" },
+          "status":     { "type": "string", "example": "Active" },
+          "labels":     { "type": "object", "additionalProperties": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "CreateNamespaceRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":   { "type": "string" },
+          "labels": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+
+      "ConfigMapSummary": {
+        "type": "object",
+        "properties": {
+          "name":       { "type": "string" },
+          "namespace":  { "type": "string" },
+          "keys":       { "type": "array", "items": { "type": "string" } },
+          "labels":     { "type": "object", "additionalProperties": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "CreateConfigMapRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":      { "type": "string" },
+          "namespace": { "type": "string", "default": "default" },
+          "data":      { "type": "object", "additionalProperties": { "type": "string" } },
+          "labels":    { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+
+      "PVCSummary": {
+        "type": "object",
+        "properties": {
+          "name":              { "type": "string" },
+          "namespace":         { "type": "string" },
+          "status":            { "type": "string", "example": "Bound" },
+          "storage_class":     { "type": "string" },
+          "access_modes":      { "type": "array", "items": { "type": "string" } },
+          "capacity":          { "type": "string", "example": "10Gi" },
+          "requested_storage": { "type": "string", "example": "10Gi" },
+          "volume_name":       { "type": "string" },
+          "labels":            { "type": "object", "additionalProperties": { "type": "string" } },
+          "created_at":        { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "CreatePVCRequest": {
+        "type": "object",
+        "required": ["name", "storage", "access_modes"],
+        "properties": {
+          "name":          { "type": "string" },
+          "namespace":     { "type": "string", "default": "default" },
+          "storage_class": { "type": "string" },
+          "access_modes":  {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"]
+            },
+            "example": ["ReadWriteOnce"]
+          },
+          "storage": { "type": "string", "example": "10Gi" },
+          "labels":  { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+
+      "NodeCondition": {
+        "type": "object",
+        "properties": {
+          "type":    { "type": "string" },
+          "status":  { "type": "string" },
+          "message": { "type": "string" },
+          "reason":  { "type": "string" }
+        }
+      },
+
+      "NodeAddress": {
+        "type": "object",
+        "properties": {
+          "type":    { "type": "string", "example": "InternalIP" },
+          "address": { "type": "string", "example": "10.0.0.1" }
+        }
+      },
+
+      "NodeSummary": {
+        "type": "object",
+        "properties": {
+          "name":               { "type": "string" },
+          "status":             { "type": "string", "example": "Ready" },
+          "roles":              { "type": "array", "items": { "type": "string" } },
+          "kubelet_version":    { "type": "string" },
+          "os_image":           { "type": "string" },
+          "container_runtime":  { "type": "string" },
+          "architecture":       { "type": "string" },
+          "cpu_capacity":       { "type": "string" },
+          "memory_capacity":    { "type": "string" },
+          "cpu_allocatable":    { "type": "string" },
+          "memory_allocatable": { "type": "string" },
+          "labels":             { "type": "object", "additionalProperties": { "type": "string" } },
+          "conditions":         { "type": "array", "items": { "$ref": "#/components/schemas/NodeCondition" } },
+          "addresses":          { "type": "array", "items": { "$ref": "#/components/schemas/NodeAddress" } },
+          "created_at":         { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "ClusterInfo": {
+        "type": "object",
+        "properties": {
+          "server_version":   { "type": "string", "example": "v1.32.0" },
+          "git_commit":       { "type": "string" },
+          "platform":         { "type": "string", "example": "linux/amd64" },
+          "go_version":       { "type": "string" },
+          "node_count":       { "type": "integer" },
+          "namespace_count":  { "type": "integer" },
+          "pod_count":        { "type": "integer" }
+        }
+      }
+    }
+  },
+
+  "tags": [
+    { "name": "Health",                  "description": "Liveness and readiness" },
+    { "name": "Pods",                    "description": "Pod lifecycle management" },
+    { "name": "Deployments",             "description": "Deployment CRUD, scaling, and rolling restarts" },
+    { "name": "Services",                "description": "Service networking management" },
+    { "name": "Namespaces",              "description": "Namespace management" },
+    { "name": "ConfigMaps",              "description": "ConfigMap management" },
+    { "name": "PersistentVolumeClaims",  "description": "PVC storage management" },
+    { "name": "Nodes",                   "description": "Node inspection" },
+    { "name": "System",                  "description": "Cluster-level information" }
+  ]
+}

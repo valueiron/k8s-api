@@ -1,0 +1,40 @@
+---
+# ClusterIP service for in-cluster access (e.g. from other pods, Ingress).
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-api
+  namespace: k8s-api
+  labels:
+    app.kubernetes.io/name: k8s-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: k8s-api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+
+---
+# NodePort service for direct external access without an Ingress controller.
+# The cluster assigns a random port in 30000-32767 unless nodePort is set.
+# Access via:  http://<any-node-ip>:<nodePort>
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-api-nodeport
+  namespace: k8s-api
+  labels:
+    app.kubernetes.io/name: k8s-api
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: k8s-api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+      nodePort: 30080   # Fix the port for predictable access; remove to auto-assign.
