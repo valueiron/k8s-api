@@ -2,11 +2,23 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Kubernetes REST API",
-    "version": "1.0.0",
-    "description": "A simplified REST API for managing Kubernetes resources using client-go. Supports pods, deployments, services, namespaces, configmaps, persistent volume claims, nodes, and cluster info."
+    "version": "1.1.0",
+    "description": "A simplified REST API for managing Kubernetes resources using client-go. Supports pods, deployments, services, namespaces, configmaps, persistent volume claims, nodes, cluster info, and dynamic manifest apply/delete."
   },
   "servers": [
     { "url": "http://localhost:8080", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Service liveness" },
+    { "name": "Pods", "description": "Pod lifecycle management" },
+    { "name": "Deployments", "description": "Deployment management" },
+    { "name": "Services", "description": "Service management" },
+    { "name": "Namespaces", "description": "Namespace management" },
+    { "name": "ConfigMaps", "description": "ConfigMap management" },
+    { "name": "PVCs", "description": "PersistentVolumeClaim management" },
+    { "name": "Nodes", "description": "Node information" },
+    { "name": "System", "description": "Cluster information" },
+    { "name": "Manifests", "description": "Dynamic YAML manifest apply and delete for lab provisioning" }
   ],
   "paths": {
     "/health": {
@@ -839,6 +851,91 @@
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
+    },
+
+    "/manifests/apply": {
+      "post": {
+        "summary": "Apply YAML manifests",
+        "description": "Accepts raw YAML (single or multi-document separated by ---) and creates each described Kubernetes resource via the dynamic client. Supported kinds: Pod, Service, ConfigMap, ServiceAccount, Namespace, PersistentVolumeClaim, Deployment, StatefulSet, DaemonSet, Job, CronJob, Ingress, Role, RoleBinding, ClusterRole, ClusterRoleBinding.",
+        "operationId": "applyManifests",
+        "tags": ["Manifests"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/plain": {
+              "schema": { "type": "string" },
+              "example": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: my-pod\n  namespace: default\nspec:\n  containers:\n  - name: shell\n    image: ubuntu:24.04\n    command: [\"sleep\", \"infinity\"]"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All resources applied successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "applied": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/AppliedResource" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "description": "Dynamic client not available" }
+        }
+      }
+    },
+
+    "/manifests/{namespace}/{kind}/{name}": {
+      "delete": {
+        "summary": "Delete a manifest resource",
+        "description": "Deletes a single Kubernetes resource by kind, namespace, and name. Use namespace \"_\" for cluster-scoped resources (ClusterRole, ClusterRoleBinding, Namespace).",
+        "operationId": "deleteManifestResource",
+        "tags": ["Manifests"],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "description": "Namespace of the resource, or \"_\" for cluster-scoped resources",
+            "schema": { "type": "string", "example": "default" }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "description": "Kubernetes resource kind (e.g. Pod, Deployment, Service)",
+            "schema": { "type": "string", "example": "Pod" }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "Resource name",
+            "schema": { "type": "string", "example": "my-pod" }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "description": "Set to true to force immediate deletion (gracePeriod=0)",
+            "schema": { "type": "string", "enum": ["true", "false", "1", "0"] }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Resource deleted" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" },
+          "503": { "description": "Dynamic client not available" }
+        }
+      }
     }
   },
 
@@ -934,6 +1031,16 @@
             "format": "uuid",
             "description": "Use with GET /pods/exec/ws?sessionId=..."
           }
+        }
+      },
+
+      "AppliedResource": {
+        "type": "object",
+        "description": "A Kubernetes resource that was created via ApplyManifests",
+        "properties": {
+          "kind": { "type": "string", "description": "Kubernetes resource kind", "example": "Pod" },
+          "name": { "type": "string", "description": "Resource name", "example": "lab-k8s-shell" },
+          "namespace": { "type": "string", "description": "Namespace (omitted for cluster-scoped resources)", "example": "default" }
         }
       },
 

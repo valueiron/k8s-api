@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -34,6 +35,55 @@ type ContainerStatus struct {
 	Ready    bool   `json:"ready"`
 	Restarts int32  `json:"restarts"`
 	State    string `json:"state"`
+}
+
+// CreatePod handles POST /pods.
+// Body: {"name": "<pod-name>", "namespace": "<ns>", "image": "<image>"}
+// Creates a pod with sleep infinity as its command so it stays alive for exec sessions.
+// Returns: {"name": "<name>", "namespace": "<ns>"}
+func (h *Handler) CreatePod(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+		Image     string `json:"image"`
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+	if body.Name == "" || body.Image == "" {
+		writeError(w, http.StatusBadRequest, "body must include 'name' and 'image'")
+		return
+	}
+	ns := body.Namespace
+	if ns == "" {
+		ns = "default"
+	}
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      body.Name,
+			Namespace: ns,
+			Labels:    map[string]string{"app": "lab-shell"},
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{
+				{
+					Name:    "shell",
+					Image:   body.Image,
+					Command: []string{"sleep", "infinity"},
+				},
+			},
+		},
+	}
+
+	created, err := h.k8s.CoreV1().Pods(ns).Create(r.Context(), pod, metav1.CreateOptions{})
+	if err != nil {
+		slog.Error("failed to create pod", "name", body.Name, "error", err)
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	slog.Info("pod created", "name", created.Name, "namespace", created.Namespace)
+	writeJSON(w, http.StatusOK, map[string]string{"name": created.Name, "namespace": created.Namespace})
 }
 
 // ListPods returns all pods, optionally filtered by ?namespace=.

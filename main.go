@@ -119,6 +119,7 @@ func main() {
 
 	// Pods — literal routes first so gorilla/mux doesn't swallow them as path vars
 	r.HandleFunc("/pods", h.ListPods).Methods(http.MethodGet)
+	r.HandleFunc("/pods", h.CreatePod).Methods(http.MethodPost)
 	r.HandleFunc("/pods/exec/ws", h.ExecPodWS) // WebSocket: no Methods constraint
 	r.HandleFunc("/pods/{namespace}/{name}/logs", h.GetPodLogs).Methods(http.MethodGet)
 	r.HandleFunc("/pods/{namespace}/{name}/metrics", h.GetPodMetrics).Methods(http.MethodGet)
@@ -162,6 +163,10 @@ func main() {
 	// Nodes
 	r.HandleFunc("/nodes", h.ListNodes).Methods(http.MethodGet)
 	r.HandleFunc("/nodes/{name}", h.GetNode).Methods(http.MethodGet)
+
+	// Manifest apply/delete (for lab provisioning from YAML manifests)
+	r.HandleFunc("/manifests/apply", h.ApplyManifests).Methods(http.MethodPost)
+	r.HandleFunc("/manifests/{namespace}/{kind}/{name}", h.DeleteManifestResource).Methods(http.MethodDelete)
 
 	// System / Cluster
 	r.HandleFunc("/system/info", h.ClusterInfo).Methods(http.MethodGet)
