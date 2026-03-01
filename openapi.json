@@ -199,6 +199,62 @@
       }
     },
 
+    "/pods/{namespace}/{name}/exec": {
+      "post": {
+        "summary": "Create pod exec session",
+        "description": "Creates a session for an interactive shell in the pod. Returns a sessionId to use with the exec WebSocket endpoint. Optional body: container (for multi-container pods) and shell (\"auto\", \"bash\", or \"sh\"). Default shell \"auto\" tries script+PTY then bash then sh; \"bash\" skips script; \"sh\" is minimal for Alpine/BusyBox.",
+        "operationId": "createPodExecSession",
+        "tags": ["Pods"],
+        "parameters": [
+          { "$ref": "#/components/parameters/namespace" },
+          { "$ref": "#/components/parameters/name" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateExecSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecSessionResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+
+    "/pods/exec/ws": {
+      "get": {
+        "summary": "Pod exec WebSocket",
+        "description": "Upgrades to WebSocket for interactive shell I/O. Query param: sessionId (from POST /pods/{namespace}/{name}/exec). Client sends: binary/text → stdin; JSON { \"type\": \"resize\", \"cols\", \"rows\" }; { \"type\": \"ping\" }. Server sends: binary → stdout/stderr; JSON { \"type\": \"connected\" }, { \"type\": \"disconnected\" }, { \"type\": \"error\", \"message\" }, { \"type\": \"pong\" }.",
+        "operationId": "podExecWebSocket",
+        "tags": ["Pods"],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Session ID from createPodExecSession"
+          }
+        ],
+        "responses": {
+          "101": { "description": "Switching Protocols (WebSocket upgrade)" },
+          "400": { "description": "Missing or invalid sessionId" },
+          "404": { "description": "Session not found or expired" }
+        }
+      }
+    },
+
     "/deployments": {
       "get": {
         "summary": "List deployments",
@@ -851,6 +907,33 @@
         "type": "object",
         "properties": {
           "status": { "type": "string", "example": "rolling restart initiated" }
+        }
+      },
+
+      "CreateExecSessionRequest": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string",
+            "description": "Container name (required for multi-container pods)"
+          },
+          "shell": {
+            "type": "string",
+            "enum": ["auto", "bash", "sh"],
+            "default": "auto",
+            "description": "Shell strategy: auto (script then bash then sh), bash (no script), sh (minimal for Alpine/BusyBox)"
+          }
+        }
+      },
+
+      "ExecSessionResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Use with GET /pods/exec/ws?sessionId=..."
+          }
         }
       },
 
