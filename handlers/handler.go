@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
@@ -13,12 +14,13 @@ import (
 type Handler struct {
 	k8s     *kubernetes.Clientset
 	metrics *metricsclient.Clientset
+	cfg     *rest.Config
 }
 
 // New creates a Handler. metricsClient may be nil when the metrics-server
 // is not installed in the cluster; affected endpoints return 503.
-func New(k8s *kubernetes.Clientset, metrics *metricsclient.Clientset) *Handler {
-	return &Handler{k8s: k8s, metrics: metrics}
+func New(k8s *kubernetes.Clientset, metrics *metricsclient.Clientset, cfg *rest.Config) *Handler {
+	return &Handler{k8s: k8s, metrics: metrics, cfg: cfg}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,6 +33,16 @@ func newResponseWriter(w http.ResponseWriter) *responseWriter {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack implements http.Hijacker so that gorilla/websocket can upgrade
+// connections even when the ResponseWriter is wrapped by loggingMiddleware.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying ResponseWriter does not implement http.Hijacker")
+	}
+	return h.Hijack()
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -98,18 +110,20 @@ func main() {
 		metricsClient = nil
 	}
 
-	h := handlers.New(k8sClient, metricsClient)
+	h := handlers.New(k8sClient, metricsClient, cfg)
 
 	r := mux.NewRouter()
 
 	// Health
 	r.HandleFunc("/health", h.Health).Methods(http.MethodGet)
 
-	// Pods
+	// Pods — literal routes first so gorilla/mux doesn't swallow them as path vars
 	r.HandleFunc("/pods", h.ListPods).Methods(http.MethodGet)
+	r.HandleFunc("/pods/exec/ws", h.ExecPodWS) // WebSocket: no Methods constraint
 	r.HandleFunc("/pods/{namespace}/{name}/logs", h.GetPodLogs).Methods(http.MethodGet)
 	r.HandleFunc("/pods/{namespace}/{name}/metrics", h.GetPodMetrics).Methods(http.MethodGet)
 	r.HandleFunc("/pods/{namespace}/{name}/restart", h.RestartPod).Methods(http.MethodPost)
+	r.HandleFunc("/pods/{namespace}/{name}/exec", h.CreateExecSession).Methods(http.MethodPost)
 	r.HandleFunc("/pods/{namespace}/{name}", h.GetPod).Methods(http.MethodGet)
 	r.HandleFunc("/pods/{namespace}/{name}", h.DeletePod).Methods(http.MethodDelete)
 
