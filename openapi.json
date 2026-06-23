@@ -15,7 +15,7 @@
     { "name": "Services", "description": "Service management" },
     { "name": "Namespaces", "description": "Namespace management" },
     { "name": "ConfigMaps", "description": "ConfigMap management" },
-    { "name": "PVCs", "description": "PersistentVolumeClaim management" },
+    { "name": "PersistentVolumeClaims", "description": "PersistentVolumeClaim management" },
     { "name": "Nodes", "description": "Node information" },
     { "name": "System", "description": "Cluster information" },
     { "name": "Manifests", "description": "Dynamic YAML manifest apply and delete for lab provisioning" }
@@ -1339,17 +1339,5 @@
         }
       }
     }
-  },
-
-  "tags": [
-    { "name": "Health",                  "description": "Liveness and readiness" },
-    { "name": "Pods",                    "description": "Pod lifecycle management" },
-    { "name": "Deployments",             "description": "Deployment CRUD, scaling, and rolling restarts" },
-    { "name": "Services",                "description": "Service networking management" },
-    { "name": "Namespaces",              "description": "Namespace management" },
-    { "name": "ConfigMaps",              "description": "ConfigMap management" },
-    { "name": "PersistentVolumeClaims",  "description": "PVC storage management" },
-    { "name": "Nodes",                   "description": "Node inspection" },
-    { "name": "System",                  "description": "Cluster-level information" }
-  ]
+  }
 }
